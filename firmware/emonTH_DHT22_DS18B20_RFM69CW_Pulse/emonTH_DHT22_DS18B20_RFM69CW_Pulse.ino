@@ -12,6 +12,7 @@
   Licence: GNU GPL V3
 
   Authors: Glyn Hudson
+  Forked by: ruudyn
   Builds upon JCW JeeLabs RF12 library, Arduino and Martin Harizanov's work
 
   THIS SKETCH REQUIRES:
@@ -43,6 +44,7 @@
   V2.5 - (23/10/15) default nodeID 23 to enable new emonHub.conf decoder for pulseCount packet structure
   V2.6 - (24/10/15) Tweek RF transmission timmng to help reduce RF packet loss
   V2.7 - (04/01/17) Reduce runtime checks and code size of non-debug build
+  V2.8 - (30/11/20) Add real time power counting from pulses
 
 emonhub.conf node decoder:
 See: https://github.com/openenergymonitor/emonhub/blob/emon-pi/configuration.md
@@ -58,7 +60,7 @@ See: https://github.com/openenergymonitor/emonhub/blob/emon-pi/configuration.md
        units = C,C,%,V,p
 */
 
-const byte version = 27;         // firmware version divided by 10 e,g 16 = V1.6
+const byte version = 28;         // firmware version divided by 10 e,g 16 = V1.6
                                                                       // These variables control the transmit timing of the emonTH
 const unsigned long WDT_PERIOD = 80;                                  // mseconds.
 const unsigned long WDT_MAX_NUMBER = 690;                             // Data sent after WDT_MAX_NUMBER periods of WDT_PERIOD ms without pulses:
@@ -133,10 +135,9 @@ boolean  p;
 
 unsigned long now = 0;
 
-//################################################################################################################################
-//################################################################################################################################
+//####################################################################
 void setup() {
-//################################################################################################################################
+//####################################################################
 
   pinMode(LED,OUTPUT); digitalWrite(LED,HIGH);                       // Status LED on
 
@@ -193,27 +194,39 @@ void setup() {
   digitalWrite(DHT22_PWR,LOW);
   pinMode(pulse_count_pin, INPUT_PULLUP);
 
-  //################################################################################################################################
-  // Power Save  - turn off what we don't need - http://www.nongnu.org/avr-libc/user-manual/group__avr__power.html
-  //################################################################################################################################
-  ACSR |= (1 << ACD);                     // disable Analog comparator
-  if (debug==0) power_usart0_disable();   //disable serial UART
-  power_twi_disable();                    //Disable the Two Wire Interface module.
-  // power_timer0_disable();              //don't disable necessary for the DS18B20 library
+  //##################################################################
+  // Power Save  - turn off what we don't need
+  // http://www.nongnu.org/avr-libc/user-manual/group__avr__power.html
+  //##################################################################
+  ACSR |= (1 << ACD);
+  // disable Analog comparator
+  if (debug==0) power_usart0_disable();
+  //disable serial UART
+  power_twi_disable();
+  //Disable the Two Wire Interface module.
+  // power_timer0_disable();
+  //don't disable necessary for the DS18B20 library
   power_timer1_disable();
   power_spi_disable();
 
-  //################################################################################################################################
+  //##################################################################
   // Test for presence of DHT22
-  //################################################################################################################################
+  //##################################################################
+  // Power up
   digitalWrite(DHT22_PWR,HIGH);
-  dodelay(2000);                                                        // wait 2s for DH22 to warm up
+  // Wait 2s for DH22 to warm up
+  dodelay(2000);
   dht.begin();
-  float h = dht.readHumidity();                                         // Read Humidity
-  float t = dht.readTemperature();                                      // Read Temperature
-  digitalWrite(DHT22_PWR,LOW);                                          // Power down
+  // Read Humidity
+  float h = dht.readHumidity();
+  // Read Temperature
+  float t = dht.readTemperature();
+  // Power down
+  digitalWrite(DHT22_PWR,LOW);
 
-  if (isnan(t) || isnan(h))                                             // check if returns are valid, if they are NaN (not a number) then something went wrong!
+  // Check if returns are valid,
+  // if they are NaN (not a number) then something went wrong!
+  if (isnan(t) || isnan(h))
   {
     Sleepy::loseSomeTime(1500);
     float h = dht.readHumidity();  float t = dht.readTemperature();
@@ -229,12 +242,16 @@ void setup() {
     if (debug==1) Serial.println("Detected DHT22");
   }
 
-  //################################################################################################################################
-  // Setup and for presence of DS18B20
-  //################################################################################################################################
+  //##################################################################
+  // Test and setup for presence of DS18B20
+  //##################################################################
   digitalWrite(DS18B20_PWR, HIGH); delay(50);
   sensors.begin();
-  sensors.setWaitForConversion(false);                             //disable automatic temperature conversion to reduce time spent awake, conversion will be implemented manually in sleeping http://harizanov.com/2013/07/optimizing-ds18b20-code-for-low-power-applications/
+  // Disable automatic temperature conversion to reduce time spent awake,
+  // conversion will be implemented manually in sleeping
+  // http://harizanov.com/2013/07/optimizing-ds18b20-code-for-low-power-
+  // applications/
+  sensors.setWaitForConversion(false);
   numSensors=(sensors.getDeviceCount());
 
   byte j=0;                                        // search for one wire devices and
