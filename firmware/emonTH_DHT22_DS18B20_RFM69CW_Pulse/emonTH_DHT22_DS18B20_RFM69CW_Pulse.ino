@@ -177,6 +177,8 @@ typedef struct {
   int humidity;
   int battery;
   unsigned long pulsecount;
+  unsigned int sinceupdate;
+  unsigned long power;
 } Payload;
 Payload emonth;
 
@@ -189,7 +191,10 @@ volatile unsigned long pulseCount;
 unsigned long WDT_number;
 boolean p;
 
-unsigned long now = 0;
+// Time in milliseconds at last and current rf send.
+unsigned long timelast = 0;
+unsigned long timenow = 0;
+unsigned long timedelta;
 
 //####################################################################
 void setup() {
@@ -273,7 +278,7 @@ void setup() {
   //##################################################################
   // Power up
   digitalWrite(DHT22_PWR,HIGH);
-  // Wait 2s for DH22 to warm up
+  // Wait 2 seconds for DH22 to warm up
   dodelay(2000);
   dht.begin();
   // Read Humidity
@@ -351,6 +356,7 @@ void setup() {
   WDT_number=720;
   p = 0;
 
+  timelast = millis();
   attachInterrupt(pulse_countINT, onPulse, RISING);
 }
 // End of setup
@@ -375,6 +381,17 @@ void loop()
   {
     cli();
     emonth.pulsecount += (unsigned int) pulseCount;
+    
+    timenow = millis();
+    // By using unsigned long we avoid millis() overflow after approx. 50 days.
+    timedelta = timenow - timelast;
+    emonth.sinceupdate = (unsigned int) timedelta;
+
+    // Calculate power in watts:
+    emonth.power = (unsigned long) ((pulseCount * 3600000) / timedelta);
+
+    // Reset values
+    timelast = timenow;
     pulseCount = 0;
     sei();
 
@@ -459,9 +476,6 @@ void loop()
       Serial.print("V, Pulse count: ");
       Serial.print(emonth.pulsecount);
       Serial.println("n");
-
-      unsigned long last = now;
-      now = millis();
 
       delay(100);
     }
