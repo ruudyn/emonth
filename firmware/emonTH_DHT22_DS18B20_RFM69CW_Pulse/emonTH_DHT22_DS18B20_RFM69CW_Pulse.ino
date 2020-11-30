@@ -490,10 +490,6 @@ void loop()
     rf12_sleep(RF12_SLEEP);
     dodelay(100);
     power_spi_disable();
-    // Don not blink LED
-    //digitalWrite(LED,HIGH);
-    //dodelay(100);
-    //digitalWrite(LED,LOW);
 
     WDT_number=0;
   }
