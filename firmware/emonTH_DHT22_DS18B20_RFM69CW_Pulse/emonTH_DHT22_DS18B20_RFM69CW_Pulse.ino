@@ -83,10 +83,11 @@ const byte version = 28;
 // These variables control the transmit timing of the emonTH, value in
 // milliseconds
 const unsigned long WDT_PERIOD = 80;
-// Data sent after WDT_MAX_NUMBER periods of WDT_PERIOD ms without pulses
-const unsigned long WDT_MAX_NUMBER = 690;
-// 690x 80 = 55.2 seconds (it needs to be about 5s less than the record
-// interval in emoncms)
+// Data sent after WDT_MAX_NUMBER periods of WDT_PERIOD ms without pulses.
+// This needs to be about 5 seconds less than the record interval in emoncms.
+// 320 * 80 = 25 600 ms = 25.6 seconds.
+// 690 * 80 = 55 200 ms = 55.2 seconds.
+const unsigned long WDT_MAX_NUMBER = 320;
 
 // Data sent after PULSE_MAX_NUMBER pulses
 const  unsigned long PULSE_MAX_NUMBER = 100;
@@ -164,7 +165,7 @@ boolean DHT22_status;
 OneWire oneWire(ONE_WIRE_BUS);
 DallasTemperature sensors(&oneWire);
 // Create flag variable to store presence of DS18B20
-boolean DS18B20;
+boolean DS18B20_status;
 
 // Note: Please update emonhub configuration guide on OEM wide packet
 // structure change: https://github.com/openenergymonitor/emonhub/blob/
@@ -320,11 +321,11 @@ void setup() {
   if (numSensors==0)
   {
     if (debug==1) Serial.println("No DS18B20");
-    DS18B20=0;
+    DS18B20_status=0;
   }
   else
   {
-    DS18B20=1;
+    DS18B20_status=1;
     if (debug==1)
     {
       Serial.print("Detected ");
@@ -339,7 +340,7 @@ void setup() {
   if (debug==1) delay(200);
   //##################################################################
   
-  // Serial.print(DS18B20);
+  // Serial.print(DS18B20_status);
   // Serial.print(DHT22_status);
   // if (debug==1) delay(200);
 
@@ -377,7 +378,7 @@ void loop()
     pulseCount = 0;
     sei();
 
-    if (DS18B20==1)
+    if (DS18B20_status==1)
     {
       digitalWrite(DS18B20_PWR, HIGH);
       dodelay(50);
@@ -436,7 +437,7 @@ void loop()
 
     if (debug==1)
     {
-      if (DS18B20)
+      if (DS18B20_status)
       {
         Serial.print("DS18B20 Temperature: ");
         if (DHT22_status) Serial.print(emonth.temp_external/10.0);
