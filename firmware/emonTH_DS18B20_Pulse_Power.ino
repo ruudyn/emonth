@@ -59,7 +59,7 @@ V2.5 - (23/10/15) Default nodeID 23 to enable new emonHub.conf decoder for
        pulseCount packet structure
 V2.6 - (24/10/15) Tweak RF transmission timing to help reduce RF packet loss
 V2.7 - (04/01/17) Reduce runtime checks and code size of non-debug build
-V2.8 - (30/11/20) Add real time power counting from pulses
+V2.8 - (22/01/21) Add real time power counting from pulses
 ----------------------------------------------------------------------
 
 emonhub.conf node decoder:
