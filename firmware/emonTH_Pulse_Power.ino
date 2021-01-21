@@ -1,12 +1,7 @@
 /*
-EmonTH Low Power DHT22 Humidity & Temperature, DS18B20 Temperature & Pulse
-counting Node Example.
+EmonTH Low Power DHT22 Humidity & Temperature & Pulse counting Node Example.
 
-Checkes at startup for presence of a DS18B20 temp sensor , DHT22 (temp +
-humidity) or both.
-If it finds both sensors the temperature value will be taken from the
-DS18B20 (external) and DHT22 (internal) and humidity from DHT22.
-If it finds only DS18B20 then no humidity value will be reported.
+Checkes at startup for presence of a DHT22 (temp + humidity) sensor.
 If it finds only a DHT22 then both temperature and humidity values will be
 obtained from this sesor.
 
@@ -59,7 +54,8 @@ V2.5 - (23/10/15) Default nodeID 23 to enable new emonHub.conf decoder for
        pulseCount packet structure
 V2.6 - (24/10/15) Tweak RF transmission timing to help reduce RF packet loss
 V2.7 - (04/01/17) Reduce runtime checks and code size of non-debug build
-V2.8 - (30/11/20) Add real time power counting from pulses
+V2.8 - (22/01/21) Add real time power counting from pulses and remove external
+       temperature sensor
 ----------------------------------------------------------------------
 
 emonhub.conf node decoder:
@@ -101,7 +97,7 @@ const  unsigned long PULSE_MAX_DURATION = 50;
 
 // Set to 1 to few debug serial output, turning debug off increases
 // battery life
-const boolean debug=1;
+const boolean debug=0;
 
 // Frequency of RF12B module can be RF12_433MHZ, RF12_868MHZ or RF12_915MHZ.
 // You should use the one matching the module you have.
@@ -111,16 +107,6 @@ int nodeID = 23;
 // EmonTH RFM12B wireless network group - needs to be same as emonBase
 // and emonGLCD.
 const int networkGroup = 210;
-
-// DS18B20 resolution 9,10,11 or 12bit corresponding to (0.5, 0.25, 0.125,
-// 0.0625 degrees C LSB), lower resolution means lower power.
-
-// 9 (93.8ms),10 (187.5ms) ,11 (375ms) or 12 (750ms) bits equal to
-// resplution of 0.5C, 0.25C, 0.125C and 0.0625C
-const int TEMPERATURE_PRECISION=11;
-// 9bit requres 95ms, 10bit 187ms, 11bit 375ms and 12bit resolution takes
-// 750ms
-#define ASYNC_DELAY 375
 
 // See block comment above for library info
 #include <avr/power.h>
@@ -134,7 +120,6 @@ const int TEMPERATURE_PRECISION=11;
 ISR(WDT_vect) { Sleepy::watchdogEvent(); }
 
 // Hardwired emonTH pin allocations
-const byte DS18B20_PWR=    5;
 const byte DHT22_PWR=      6;
 const byte LED=            9;
 const byte BATT_ADC=       1;
@@ -164,21 +149,15 @@ boolean DHT22_status;
 
 OneWire oneWire(ONE_WIRE_BUS);
 DallasTemperature sensors(&oneWire);
-// Create flag variable to store presence of DS18B20
-boolean DS18B20_status;
 
-// Note: Please update emonhub configuration guide on OEM wide packet
-// structure change: https://github.com/openenergymonitor/emonhub/blob/
-// emon-pi/configuration.md
 // RFM12B RF payload datastructure:
 typedef struct {
   int temp;
-  int temp_external;
   int humidity;
   int battery;
   unsigned long pulsecount;
   unsigned int sinceupdate;
-  unsigned long power;
+  unsigned int power;
 } Payload;
 Payload emonth;
 
@@ -253,7 +232,6 @@ void setup() {
   }
 
   pinMode(DHT22_PWR,OUTPUT);
-  pinMode(DS18B20_PWR,OUTPUT);
   pinMode(BATT_ADC, INPUT);
   digitalWrite(DHT22_PWR,LOW);
   pinMode(pulse_count_pin, INPUT_PULLUP);
@@ -306,48 +284,7 @@ void setup() {
     if (debug==1) Serial.println("Detected DHT22");
   }
 
-  //##################################################################
-  // Test and setup for presence of DS18B20
-  //##################################################################
-  digitalWrite(DS18B20_PWR, HIGH); delay(50);
-  sensors.begin();
-  // Disable automatic temperature conversion to reduce time spent awake,
-  // conversion will be implemented manually in sleeping
-  // http://harizanov.com/2013/07/optimizing-ds18b20-code-for-low-power-
-  // applications/
-  sensors.setWaitForConversion(false);
-  numSensors=(sensors.getDeviceCount());
-
-  // Search for one wire devices and copy to device address arrays.
-  byte j=0;
-  while ((j < numSensors) && (oneWire.search(allAddress[j]))) j++;
-  digitalWrite(DS18B20_PWR, LOW);
-
-  if (numSensors==0)
-  {
-    if (debug==1) Serial.println("No DS18B20");
-    DS18B20_status=0;
-  }
-  else
-  {
-    DS18B20_status=1;
-    if (debug==1)
-    {
-      Serial.print("Detected ");
-      Serial.print(numSensors);
-      Serial.println(" DS18B20");
-      if (DHT22_status==1) 
-      {
-        Serial.println("DS18B20 & DHT22 found, assume DS18B20 is external");
-      }
-    }
-  }
-  if (debug==1) delay(200);
-  //##################################################################
-  
-  // Serial.print(DS18B20_status);
-  // Serial.print(DHT22_status);
-  // if (debug==1) delay(200);
+  //###############################################################
 
   digitalWrite(LED,LOW);
 
@@ -359,6 +296,7 @@ void setup() {
   timelast = millis();
   attachInterrupt(pulse_countINT, onPulse, RISING);
 }
+
 // End of setup
 //####################################################################
 
@@ -380,7 +318,7 @@ void loop()
   if (WDT_number>=WDT_MAX_NUMBER || pulseCount>=PULSE_MAX_NUMBER)
   {
     cli();
-    emonth.pulsecount += (unsigned int) pulseCount;
+    emonth.pulsecount += (unsigned long) pulseCount;
     
     timenow = millis();
     // By using unsigned long we avoid millis() overflow after approx. 50 days.
@@ -388,38 +326,12 @@ void loop()
     emonth.sinceupdate = (unsigned int) timedelta;
 
     // Calculate power in watts:
-    emonth.power = (unsigned long) ((pulseCount * 3600000) / timedelta);
+    emonth.power = (unsigned int) ((pulseCount * 3600000) / timedelta);
 
     // Reset values
     timelast = timenow;
     pulseCount = 0;
     sei();
-
-    if (DS18B20_status==1)
-    {
-      digitalWrite(DS18B20_PWR, HIGH);
-      dodelay(50);
-      // Set the a to d conversion resolution of each
-      for (int j=0; j<numSensors; j++)
-      {
-        sensors.setResolution(allAddress[j], TEMPERATURE_PRECISION);
-      }
-      // Send the command to get temperatures
-      sensors.requestTemperatures();
-      // Must wait for conversion, since we use ASYNC mode
-      dodelay(ASYNC_DELAY);
-      float temp = (sensors.getTempC(allAddress[0]));
-      digitalWrite(DS18B20_PWR, LOW);
-      if ((temp<125.0) && (temp>-40.0))
-      {
-        // If DHT22 is not present, assume DS18B20 is primary internal
-        // sensor.
-        if (DHT22_status==0) emonth.temp=(temp*10);
-        // If DHT22 is present, assume DS18B20 is external sensor wired into
-        // terminal block.
-        if (DHT22_status==1) emonth.temp_external=(temp*10);
-      }
-    }
 
     if (DHT22_status==1)
     {
@@ -437,31 +349,11 @@ void loop()
       digitalWrite(DHT22_PWR,LOW);
     }
 
-    // Read battery voltage, convert ADC to volts x10
-    emonth.battery=int(analogRead(BATT_ADC)*0.03225806);
-
-    // Enhanced battery monitoring mode. In this mode battery values are
-    // sent in x*1000 mode instead of x*10. This allows to have more
-    // accurate values on emonCMS, x.xx instead of x.x.
-    // Note: If you are going to enable this mode you need to
-    // 1. Disable x*10 mode. By commenting line above.
-    // 2. Change multiplier in line 457 Serial.print(emonth.battery/10.0);
-    // 3. Change scales factor in the emonhub node decoder entry for
-    //    the emonTH.
-    // See more: https://community.openenergymonitor.org/t/emonth-battery-
-    // measurement-accuracy/1317
-    //emonth.battery=int(analogRead(BATT_ADC)*3.222);
+    // Read battery voltage, convert ADC to volts x1000
+    emonth.battery=int(analogRead(BATT_ADC)*3.222);
 
     if (debug==1)
     {
-      if (DS18B20_status)
-      {
-        Serial.print("DS18B20 Temperature: ");
-        if (DHT22_status) Serial.print(emonth.temp_external/10.0);
-        if (!DHT22_status) Serial.print(emonth.temp/10.0);
-        Serial.print("C, ");
-      }
-
       if (DHT22_status)
       {
         Serial.print("DHT22 Temperature: ");
@@ -472,7 +364,7 @@ void loop()
       }
 
       Serial.print("Battery voltage: ");
-      Serial.print(emonth.battery/10.0);
+      Serial.print(emonth.battery/1000.0);
       Serial.print("V, Pulse count: ");
       Serial.print(emonth.pulsecount);
       Serial.println("n");
@@ -524,4 +416,3 @@ void onPulse()
   // Number of pulses since the last RF sent
   pulseCount++;
 }
-
