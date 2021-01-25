@@ -85,8 +85,6 @@ const unsigned long WDT_PERIOD = 80;
 // 690 * 80 = 55 200 ms = 55.2 seconds.
 const unsigned long WDT_MAX_NUMBER = 320;
 
-// Data sent after PULSE_MAX_NUMBER pulses
-const  unsigned long PULSE_MAX_NUMBER = 100;
 const  unsigned long PULSE_MAX_DURATION = 50;
 
 
@@ -304,7 +302,7 @@ void loop()
     WDT_number++;
   }
 
-  if (WDT_number>=WDT_MAX_NUMBER || pulseCount>=PULSE_MAX_NUMBER)
+  if (WDT_number>=WDT_MAX_NUMBER)
   {
     cli();
     emonth.pulsecount += (unsigned long) pulseCount;
