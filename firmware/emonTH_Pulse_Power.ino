@@ -197,17 +197,6 @@ void setup() {
   // Initialize RFM12B
   rf12_initialize(nodeID, RF_freq, networkGroup);
 
-  // Send RFM69CW test sequence (for factory testing)
-  for (int i=10; i>-1; i--)
-  {
-    emonth.temp=i;
-    rf12_sendNow(0, &emonth, sizeof emonth);
-    delay(100);
-  }
-  rf12_sendWait(2);
-  emonth.temp=0;
-  // End of factory test sequence
-
   rf12_sleep(RF12_SLEEP);
   if (debug==1)
   {
