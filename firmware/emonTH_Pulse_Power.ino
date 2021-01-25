@@ -54,8 +54,7 @@ V2.5 - (23/10/15) Default nodeID 23 to enable new emonHub.conf decoder for
        pulseCount packet structure
 V2.6 - (24/10/15) Tweak RF transmission timing to help reduce RF packet loss
 V2.7 - (04/01/17) Reduce runtime checks and code size of non-debug build
-V2.8 - (22/01/21) Add real time power counting from pulses and remove external
-       temperature sensor
+V2.8 - (25/01/21) Remove external temperature sensor and clean other stuff
 ----------------------------------------------------------------------
 
 emonhub.conf node decoder:
@@ -64,14 +63,13 @@ configuration.md
 
 [[23]]
   nodename = emonTH_5
-  firmware = V2.x_emonTH_DHT22_DS18B20_RFM69CW_Pulse
+  firmware = V2.x_emonTH_Pulse
   hardware = emonTH_(Node_ID_Switch_DIP1:OFF_DIP2:OFF)
   [[[rx]]]
-     names = temperature, external temperature, humidity, battery,
-             pulseCount
-     datacodes = h,h,h,h,L
-     scales = 0.1,0.1,0.1,0.1,1
-     units = C,C,%,V,p
+     names = temperature, humidity, volt, pulse
+     datacodes = h,h,h,L
+     scales = 0.1,0.1,0.001,1
+     units = C,%,V,p
 */
 
 // Firmware version multiplied by 10 e,g 16 = V1.6
@@ -83,7 +81,7 @@ const unsigned long WDT_PERIOD = 80;
 // This needs to be about 5 seconds less than the record interval in emoncms.
 // 320 * 80 = 25 600 ms = 25.6 seconds.
 // 690 * 80 = 55 200 ms = 55.2 seconds.
-const unsigned long WDT_MAX_NUMBER = 320;
+const unsigned long WDT_MAX_NUMBER = 300;
 
 const  unsigned long PULSE_MAX_DURATION = 50;
 
@@ -154,24 +152,12 @@ typedef struct {
   int humidity;
   int battery;
   unsigned long pulsecount;
-  unsigned int sinceupdate;
-  unsigned int power;
 } Payload;
 Payload emonth;
-
-int numSensors;
-// Addresses of sensors, MAX 4!
-// 8 bytes per address
-byte allAddress [4][8];
 
 volatile unsigned long pulseCount;
 unsigned long WDT_number;
 boolean p;
-
-// Time in milliseconds at last and current rf send.
-unsigned long timelast = 0;
-unsigned long timenow = 0;
-unsigned long timedelta;
 
 //####################################################################
 void setup() {
@@ -280,7 +266,6 @@ void setup() {
   WDT_number=720;
   p = 0;
 
-  timelast = millis();
   attachInterrupt(pulse_countINT, onPulse, RISING);
 }
 
@@ -306,17 +291,8 @@ void loop()
   {
     cli();
     emonth.pulsecount += (unsigned long) pulseCount;
-    
-    timenow = millis();
-    // By using unsigned long we avoid millis() overflow after approx. 50 days.
-    timedelta = timenow - timelast;
-    emonth.sinceupdate = (unsigned int) timedelta;
-
-    // Calculate power in watts:
-    emonth.power = (unsigned int) ((pulseCount * 3600000) / timedelta);
 
     // Reset values
-    timelast = timenow;
     pulseCount = 0;
     sei();
 
